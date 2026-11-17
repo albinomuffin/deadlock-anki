@@ -1,6 +1,6 @@
 {
-  "name": "Deadlock S2 Anki",
-  "short_name": "Deadlock Anki",
+  "name": "Deadlog",
+  "short_name": "Deadlog",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

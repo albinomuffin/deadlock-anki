@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Deadlock Anki">
+<meta name="apple-mobile-web-app-title" content="Deadlog">
 <meta name="theme-color" content="#0d0f12">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<title>Deadlock Anki — S2 Study App</title>
+<title>Deadlog — S2 Study App</title>
 <style id="base-style">
   :root {
     --bg-main: #121417;
@@ -37,6 +37,10 @@
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+  }
+  /* Hosted Read-Only Mode: hides Add & Edit UI on Firebase / GitHub Pages */
+  body.hosted-readonly .local-edit-only {
+    display: none !important;
   }
   button, .deck-row, .card-list-item {
     touch-action: manipulation;
@@ -70,6 +74,10 @@
     background: var(--bg-hover);
     border-color: var(--gold);
     color: var(--gold-light);
+  }
+  .nav-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
   }
   .btn-danger {
     background: rgba(255, 107, 107, 0.12);
@@ -328,7 +336,7 @@
 
 <header class="topbar">
   <button class="nav-btn active" id="nav-decks" onclick="showView('decks')">Decks</button>
-  <button class="nav-btn" id="nav-add" onclick="openAddCard()">Add</button>
+  <button class="nav-btn local-edit-only" id="nav-add" onclick="openAddCard()">Add</button>
   <button class="nav-btn" id="nav-browse" onclick="showView('browse')">Browse</button>
   <button class="nav-btn" id="nav-stats" onclick="showView('stats')">Stats</button>
   <button class="nav-btn" id="nav-options" onclick="showView('options')" title="Shortcut: O">Options (⚙)</button>
@@ -341,7 +349,7 @@
   <section id="view-decks">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <div>
-        <h2 style="margin:0;">Deadlock S2 Study Decks</h2>
+        <h2 style="margin:0;">Deadlog — S2 Study Decks</h2>
         <small id="active-order-summary" style="color:var(--muted);"></small>
       </div>
       <button class="btn-sm" onclick="showView('options')">⚙ Display Order &amp; Options</button>
@@ -387,7 +395,7 @@
     </div>
 
     <div class="study-footer">
-      <button class="btn-sm" onclick="editCurrentStudyCard()" title="Shortcut: E">Edit</button>
+      <button class="btn-sm local-edit-only" onclick="editCurrentStudyCard()" title="Shortcut: E">Edit</button>
       <button class="show-ans-btn" id="btn-show-answer" onclick="revealAnswer()">Show Answer</button>
       <div class="rating-group hidden" id="rating-buttons">
         <button class="rate-btn rate-again" onclick="rateCard(1)">
@@ -530,54 +538,66 @@
         <button class="reset-icon-btn" onclick="resetSingleOption('buryNewSiblings', false)">&#8635;</button>
       </div>
     </div>
+
+    <div class="anki-opt-section">
+      <h3>Offline Mode</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-size:14px;font-weight:600;color:var(--text);">Preload All Card Images for Offline Use</div>
+          <small id="preload-status" style="color:var(--muted);">Images cache automatically as you view cards, or tap Preload before a flight / dead zone.</small>
+        </div>
+        <button type="button" class="nav-btn" id="btn-preload-media" onclick="preloadAllImagesOffline()">Preload All Images</button>
+      </div>
+    </div>
   </section>
 
-  <!-- 4. BROWSE / EDIT VIEW -->
+  <!-- 4. BROWSE / PREVIEW VIEW -->
   <section id="view-browse" class="hidden">
     <div class="browse-toolbar">
       <input type="text" id="browse-search" class="input-field" placeholder="Search item, hero, stat, or ability..." oninput="renderBrowseList()">
       <select id="browse-deck-filter" class="select-field" onchange="renderBrowseList()">
         <option value="ALL">All Decks</option>
       </select>
-      <button class="nav-btn" onclick="openAddCard()">+ New Card</button>
+      <button class="nav-btn local-edit-only" onclick="openAddCard()">+ New Card</button>
     </div>
 
     <div class="browse-layout">
       <div class="card-list-pane" id="browse-list"></div>
       <div class="editor-pane">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-          <h3 id="editor-heading" style="margin:0;color:var(--gold);">Edit Card</h3>
+          <h3 id="editor-heading" style="margin:0;color:var(--gold);">Card Preview</h3>
           <div style="display:flex;gap:8px;">
-            <button class="btn-sm hidden" id="btn-revert-apkg" onclick="revertCardToApkg()">Revert</button>
+            <button class="btn-sm local-edit-only hidden" id="btn-revert-apkg" onclick="revertCardToApkg()">Revert</button>
             <button class="btn-sm" onclick="resetSelectedCardSRS()">Reset SRS</button>
-            <button class="btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="deleteSelectedCard()">Delete</button>
+            <button class="btn-sm local-edit-only" style="color:var(--danger);border-color:var(--danger);" onclick="deleteSelectedCard()">Delete</button>
           </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-          <div>
-            <label style="font-size:12px;color:var(--muted);">Card Title</label>
-            <input type="text" id="edit-title" class="input-field" style="width:100%;margin-top:4px;">
+        <div class="local-edit-only">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div>
+              <label style="font-size:12px;color:var(--muted);">Card Title</label>
+              <input type="text" id="edit-title" class="input-field" style="width:100%;margin-top:4px;">
+            </div>
+            <div>
+              <label style="font-size:12px;color:var(--muted);">Deck Name</label>
+              <input type="text" id="edit-deck" class="input-field" style="width:100%;margin-top:4px;" list="deck-suggestions">
+              <datalist id="deck-suggestions"></datalist>
+            </div>
           </div>
-          <div>
-            <label style="font-size:12px;color:var(--muted);">Deck Name</label>
-            <input type="text" id="edit-deck" class="input-field" style="width:100%;margin-top:4px;" list="deck-suggestions">
-            <datalist id="deck-suggestions"></datalist>
-          </div>
+
+          <label style="font-size:12px;color:var(--muted);">Front HTML</label>
+          <textarea id="edit-front" class="code-area" oninput="updateEditorPreview()"></textarea>
+
+          <label style="font-size:12px;color:var(--muted);">Back HTML</label>
+          <textarea id="edit-back" class="code-area" oninput="updateEditorPreview()"></textarea>
         </div>
 
-        <label style="font-size:12px;color:var(--muted);">Front HTML</label>
-        <textarea id="edit-front" class="code-area" oninput="updateEditorPreview()"></textarea>
-
-        <label style="font-size:12px;color:var(--muted);">Back HTML</label>
-        <textarea id="edit-back" class="code-area" oninput="updateEditorPreview()"></textarea>
-
-        <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
           <span id="edit-srs-info" style="font-size:12px;color:var(--muted);"></span>
-          <button class="show-ans-btn" style="margin:0;padding:8px 24px;" onclick="saveEditedCard()">Save Changes</button>
+          <button class="show-ans-btn local-edit-only" style="margin:0;padding:8px 24px;" onclick="saveEditedCard()">Save Changes</button>
         </div>
 
-        <h4 style="color:var(--muted);margin:18px 0 8px 0;border-top:1px solid var(--border);padding-top:12px;">Live Preview</h4>
         <div class="card" id="editor-preview" style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;"></div>
       </div>
     </div>
@@ -615,6 +635,11 @@
 </main>
 
 <script>
+const IS_LOCAL_PC = (location.hostname === "localhost" || location.hostname === "127.0.0.1");
+if (!IS_LOCAL_PC) {
+  document.body.classList.add("hosted-readonly");
+}
+
 let CARDS = [];
 let SRS = {};
 let DECK_OPTIONS = {
@@ -696,14 +721,16 @@ async function initApp() {
   if (localOpt) {
     try { DECK_OPTIONS = { ...DECK_OPTIONS, ...JSON.parse(localOpt) }; } catch(err) {}
   }
-  try {
-    const resOpt = await fetch("/api/options");
-    if (resOpt.ok) {
-      const srvOpt = await resOpt.json();
-      DECK_OPTIONS = { ...DECK_OPTIONS, ...srvOpt };
-      localStorage.setItem("deadlock_anki_options", JSON.stringify(DECK_OPTIONS));
-    }
-  } catch (e) {}
+  if (IS_LOCAL_PC) {
+    try {
+      const resOpt = await fetch("/api/options");
+      if (resOpt.ok) {
+        const srvOpt = await resOpt.json();
+        DECK_OPTIONS = { ...DECK_OPTIONS, ...srvOpt };
+        localStorage.setItem("deadlock_anki_options", JSON.stringify(DECK_OPTIONS));
+      }
+    } catch (e) {}
+  }
 
   const resCards = await fetch("./deadlock_cards.json");
   const dataCards = await resCards.json();
@@ -728,20 +755,80 @@ async function initApp() {
   if (localSrs) {
     try { SRS = JSON.parse(localSrs); } catch(e) {}
   }
-  try {
-    const resSrs = await fetch("/api/srs");
-    if (resSrs.ok) {
-      const serverSrs = await resSrs.json();
-      if (Object.keys(serverSrs).length > Object.keys(SRS).length) {
-        SRS = serverSrs;
-        localStorage.setItem("deadlock_anki_srs", JSON.stringify(SRS));
+  if (IS_LOCAL_PC) {
+    try {
+      const resSrs = await fetch("/api/srs");
+      if (resSrs.ok) {
+        const serverSrs = await resSrs.json();
+        if (Object.keys(serverSrs).length > Object.keys(SRS).length) {
+          SRS = serverSrs;
+          localStorage.setItem("deadlock_anki_srs", JSON.stringify(SRS));
+        }
       }
-    }
-  } catch (e) {}
+    } catch (e) {}
+  }
 
   syncOptionsFormUI();
   populateDeckFilters();
   renderDecksTable();
+}
+
+async function preloadAllImagesOffline() {
+  const btn = document.getElementById("btn-preload-media");
+  const statusEl = document.getElementById("preload-status");
+  if (!('caches' in window)) {
+    alert("Offline caching requires HTTPS or localhost.");
+    return;
+  }
+
+  const imgSet = new Set();
+  const imgRegex = /src=['"]([^'"]*media\/[^'"]+)['"]/gi;
+  for (const c of CARDS) {
+    for (const html of [c.front || "", c.back || ""]) {
+      let m;
+      while ((m = imgRegex.exec(html)) !== null) {
+        const raw = m[1];
+        const cleanPath = (raw.startsWith("./") || raw.startsWith("/") || raw.startsWith("http")) ? raw : "./" + raw;
+        imgSet.add(cleanPath);
+      }
+    }
+  }
+
+  const urls = Array.from(imgSet);
+  if (urls.length === 0) return;
+
+  btn.disabled = true;
+  const keys = await caches.keys();
+  const cacheName = keys.find(k => k.startsWith("deadlog-") || k.startsWith("deadlock-")) || "deadlog-pwa-v1";
+  const cache = await caches.open(cacheName);
+
+  let done = 0;
+  const total = urls.length;
+  statusEl.textContent = `Downloading images: 0 / ${total}...`;
+
+  const batchSize = 25;
+  for (let i = 0; i < total; i += batchSize) {
+    const batch = urls.slice(i, i + batchSize);
+    await Promise.allSettled(
+      batch.map(async (url) => {
+        const existing = await cache.match(url, { ignoreSearch: true });
+        if (!existing) {
+          const resp = await fetch(url);
+          if (resp && resp.ok) {
+            await cache.put(url, resp);
+          }
+        }
+        done++;
+      })
+    );
+    btn.textContent = `${Math.round((done / total) * 100)}%`;
+    statusEl.textContent = `Cached ${done} / ${total} images for offline study...`;
+  }
+
+  btn.textContent = "✓ All Cached";
+  statusEl.style.color = "var(--due-green)";
+  statusEl.textContent = `All ${total} item, grid, and hero images are saved on this device for offline use.`;
+  setStatus("Offline images ready");
 }
 
 function syncOptionsFormUI() {
@@ -816,13 +903,15 @@ async function saveDeckOptions() {
   DECK_OPTIONS.buryNewSiblings = document.getElementById("opt-buryNewSiblings").checked;
 
   localStorage.setItem("deadlock_anki_options", JSON.stringify(DECK_OPTIONS));
-  try {
-    await fetch("/api/options", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(DECK_OPTIONS)
-    });
-  } catch (e) {}
+  if (IS_LOCAL_PC) {
+    try {
+      await fetch("/api/options", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(DECK_OPTIONS)
+      });
+    } catch (e) {}
+  }
 
   syncOptionsFormUI();
   setStatus("Options saved");
@@ -832,17 +921,20 @@ async function saveDeckOptions() {
 async function persistSRS() {
   localStorage.setItem("deadlock_anki_srs", JSON.stringify(SRS));
   localStorage.setItem("deadlock_anki_daily_stats", JSON.stringify(DAILY_STATS));
-  try {
-    await fetch("/api/srs", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(SRS)
-    });
-  } catch (e) {}
+  if (IS_LOCAL_PC) {
+    try {
+      await fetch("/api/srs", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(SRS)
+      });
+    } catch (e) {}
+  }
   setStatus("Saved");
 }
 
 async function persistCards() {
+  if (!IS_LOCAL_PC) return;
   const edits = { __CUSTOM_CARDS__: [] };
   for (const c of CARDS) {
     if (c.isCustom) edits.__CUSTOM_CARDS__.push(c);
@@ -1243,7 +1335,6 @@ function loadNextStudyCard() {
 
   CURRENT_CARD = STUDY_QUEUE[0];
   ANSWER_SHOWN = false;
-  // Hide card ID on the front so it never spoils the item/hero name!
   document.getElementById("study-card-id").textContent = "";
   document.getElementById("study-front").innerHTML = CURRENT_CARD.front;
   document.getElementById("study-back").innerHTML = CURRENT_CARD.back;
@@ -1368,7 +1459,7 @@ function renderBrowseList() {
     const badgeColor = s.state === "new" ? "var(--new-blue)" : (s.state === "review" ? "var(--due-green)" : "var(--learn-orange)");
     const selCls = c.id === SELECTED_BROWSE_ID ? "card-list-item selected" : "card-list-item";
     const safeId = c.id.replace(/'/g, "\\'");
-    const modBadge = c.isModified ? ` ✏️` : "";
+    const modBadge = (IS_LOCAL_PC && c.isModified) ? ` ✏️` : "";
     return `
       <div class="${selCls}" onclick="selectBrowseCard('${safeId}')">
         <div>
@@ -1389,14 +1480,16 @@ function selectBrowseCard(cardId) {
   SELECTED_BROWSE_ID = cardId;
   const card = CARDS.find(c => c.id === cardId);
   if (!card) return;
-  document.getElementById("editor-heading").textContent = `Edit [${card.id}]` + (card.isModified ? " ✏️" : "");
+  document.getElementById("editor-heading").textContent = IS_LOCAL_PC
+    ? (`Edit [${card.id}]` + (card.isModified ? " ✏️" : ""))
+    : card.title;
   document.getElementById("edit-title").value = card.title;
   document.getElementById("edit-deck").value = card.deck;
   document.getElementById("edit-front").value = card.front;
   document.getElementById("edit-back").value = card.back;
 
   const revertBtn = document.getElementById("btn-revert-apkg");
-  if (revertBtn) revertBtn.classList.toggle("hidden", !(card.isModified && card.apkgBack));
+  if (revertBtn) revertBtn.classList.toggle("hidden", !(IS_LOCAL_PC && card.isModified && card.apkgBack));
 
   const s = getCardSRS(card.id);
   document.getElementById("edit-srs-info").textContent =
@@ -1412,6 +1505,7 @@ function updateEditorPreview() {
 }
 
 function openAddCard() {
+  if (!IS_LOCAL_PC) return;
   showView("browse");
   SELECTED_BROWSE_ID = "__NEW__";
   document.getElementById("editor-heading").textContent = "Add New Card";
@@ -1424,12 +1518,13 @@ function openAddCard() {
 }
 
 function editCurrentStudyCard() {
-  if (!CURRENT_CARD) return;
+  if (!IS_LOCAL_PC || !CURRENT_CARD) return;
   showView("browse");
   selectBrowseCard(CURRENT_CARD.id);
 }
 
 async function saveEditedCard() {
+  if (!IS_LOCAL_PC) return;
   const title = document.getElementById("edit-title").value.trim() || "Untitled";
   const deck = document.getElementById("edit-deck").value.trim() || "Deadlock S2::Custom";
   const front = document.getElementById("edit-front").value;
@@ -1454,7 +1549,7 @@ async function saveEditedCard() {
 }
 
 async function revertCardToApkg() {
-  if (!SELECTED_BROWSE_ID || SELECTED_BROWSE_ID === "__NEW__") return;
+  if (!IS_LOCAL_PC || !SELECTED_BROWSE_ID || SELECTED_BROWSE_ID === "__NEW__") return;
   const card = CARDS.find(c => c.id === SELECTED_BROWSE_ID);
   if (!card || !card.apkgBack) return;
   if (!confirm(`Revert "${card.title}" to default?`)) return;
@@ -1466,7 +1561,7 @@ async function revertCardToApkg() {
 }
 
 async function deleteSelectedCard() {
-  if (!SELECTED_BROWSE_ID || SELECTED_BROWSE_ID === "__NEW__") return;
+  if (!IS_LOCAL_PC || !SELECTED_BROWSE_ID || SELECTED_BROWSE_ID === "__NEW__") return;
   if (!confirm(`Delete card "${SELECTED_BROWSE_ID}"?`)) return;
   CARDS = CARDS.filter(c => c.id !== SELECTED_BROWSE_ID);
   SELECTED_BROWSE_ID = null;
@@ -1502,17 +1597,22 @@ async function syncFromApkg() {
   setStatus("Syncing...");
   try {
     let data = null;
-    try {
-      const apiRes = await fetch("/api/sync-apkg", { method: "POST" });
-      if (apiRes.ok) data = await apiRes.json();
-    } catch (e) {}
+    if (IS_LOCAL_PC) {
+      try {
+        const apiRes = await fetch("/api/sync-apkg", { method: "POST" });
+        if (apiRes.ok) data = await apiRes.json();
+      } catch (e) {}
+    }
 
     if (!data) {
       const ghRes = await fetch("./deadlock_cards.json?t=" + Date.now(), { cache: "no-store" });
       data = await ghRes.json();
       if ('caches' in window) {
-        const cache = await caches.open('deadlock-anki-gh-v1');
-        await cache.put('./deadlock_cards.json', new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } }));
+        const keys = await caches.keys();
+        for (const k of keys) {
+          const cache = await caches.open(k);
+          await cache.put('./deadlock_cards.json', new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } }));
+        }
       }
     }
 
@@ -1532,17 +1632,17 @@ async function syncFromApkg() {
     populateDeckFilters();
     renderDecksTable();
     setStatus(`Synced ${CARDS.length} cards`);
-    alert(`Synced ${CARDS.length} cards! Progress and local edits preserved.`);
+    alert(`Synced ${CARDS.length} cards! Your study progress was preserved.`);
   } catch (e) {
     alert("Offline or could not reach server.");
   }
 }
 
 function exportProgressBackup() {
-  const blob = new Blob([JSON.stringify({ srs: SRS, options: DECK_OPTIONS, cards: CARDS }, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ srs: SRS, options: DECK_OPTIONS }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `deadlock_anki_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.download = `deadlog_backup_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
 }
 
@@ -1553,10 +1653,8 @@ async function importProgressBackup(event) {
   const data = JSON.parse(text);
   if (data.srs) SRS = data.srs;
   if (data.options) DECK_OPTIONS = { ...DECK_OPTIONS, ...data.options };
-  if (data.cards) CARDS = data.cards;
   syncOptionsFormUI();
   await persistSRS();
-  await persistCards();
   renderDecksTable();
   renderStatsView();
   alert("Backup restored!");
@@ -1588,7 +1686,7 @@ window.addEventListener("keydown", (e) => {
   else if (ANSWER_SHOWN && ["Digit2", "Numpad2"].includes(e.code)) rateCard(2);
   else if (ANSWER_SHOWN && ["Digit3", "Numpad3"].includes(e.code)) rateCard(3);
   else if (ANSWER_SHOWN && ["Digit4", "Numpad4"].includes(e.code)) rateCard(4);
-  else if (e.key === "e" || e.key === "E") { e.preventDefault(); editCurrentStudyCard(); }
+  else if (IS_LOCAL_PC && (e.key === "e" || e.key === "E")) { e.preventDefault(); editCurrentStudyCard(); }
   else if (e.key === "z" || e.key === "Z") { e.preventDefault(); undoLastReview(); }
 });
 
