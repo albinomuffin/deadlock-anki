@@ -1,4 +1,4 @@
-const CACHE_NAME = 'deadlock-anki-gh-v20261117_123218';
+const CACHE_NAME = 'deadlock-anki-gh-v20261117_141022';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -23,7 +23,32 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET' || e.request.url.includes('/api/')) return;
+  if (
+    e.request.method !== 'GET' ||
+    e.request.url.includes('/api/') ||
+    e.request.url.includes('/__/') ||
+    e.request.url.includes('googleapis.com') ||
+    e.request.url.includes('gstatic.com') ||
+    e.request.url.includes('firebase')
+  ) {
+    return;
+  }
+
+  // Network-first for index.html and deadlock_cards.json so users always get fresh patches automatically
+  if (e.request.url.endsWith('.json') || e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request).then((resp) => {
+        if (resp && resp.status === 200) {
+          const copy = resp.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, copy));
+        }
+        return resp;
+      }).catch(() => caches.match(e.request, { ignoreSearch: true }))
+    );
+    return;
+  }
+
+  // Cache-first (on-demand) for images and icons
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then((cached) => {
       const networkFetch = fetch(e.request).then((resp) => {

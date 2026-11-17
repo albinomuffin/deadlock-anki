@@ -10,6 +10,9 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Deadlog — S2 Study App</title>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <style id="base-style">
   :root {
     --bg-main: #121417;
@@ -38,8 +41,8 @@
     display: flex;
     flex-direction: column;
   }
-  /* Hosted Read-Only Mode: hides Add & Edit UI on Firebase / GitHub Pages */
-  body.hosted-readonly .local-edit-only {
+  /* Hide Add, Edit, and Sync Patch for everyone except the Admin */
+  body:not(.is-admin) .admin-only {
     display: none !important;
   }
   button, .deck-row, .card-list-item {
@@ -63,7 +66,7 @@
     background: var(--bg-panel);
     color: var(--text);
     border: 1px solid var(--border);
-    padding: 7px 16px;
+    padding: 7px 14px;
     border-radius: 6px;
     font-size: 14px;
     font-weight: 600;
@@ -75,9 +78,10 @@
     border-color: var(--gold);
     color: var(--gold-light);
   }
-  .nav-btn:disabled {
-    opacity: 0.6;
-    cursor: default;
+  .nav-btn:disabled { opacity: 0.6; cursor: default; }
+  .auth-btn-logged-in {
+    border-color: var(--due-green) !important;
+    color: var(--due-green) !important;
   }
   .btn-danger {
     background: rgba(255, 107, 107, 0.12);
@@ -108,6 +112,44 @@
     padding: 24px 16px 90px 16px;
   }
   .hidden { display: none !important; }
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 16px;
+  }
+  .modal-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    max-width: 420px;
+    width: 100%;
+    padding: 22px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.6);
+  }
+  .modal-card h3 { margin: 0 0 8px 0; color: var(--gold-light); font-size: 20px; }
+  .modal-input {
+    width: 100%;
+    background: #121417;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
+  .modal-divider {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    margin: 14px 0;
+    position: relative;
+  }
 
   .deck-table {
     width: 100%;
@@ -315,7 +357,7 @@
 
   @media (max-width: 768px) {
     header.topbar { gap: 6px; padding-left: 10px; padding-right: 10px; }
-    .nav-btn { padding: 6px 11px; font-size: 13px; }
+    .nav-btn { padding: 6px 10px; font-size: 12.5px; }
     .status-pill { display: none; }
     main.container { padding: 12px 10px 110px 10px; }
     .deck-sub { padding-left: 16px !important; }
@@ -336,13 +378,55 @@
 
 <header class="topbar">
   <button class="nav-btn active" id="nav-decks" onclick="showView('decks')">Decks</button>
-  <button class="nav-btn local-edit-only" id="nav-add" onclick="openAddCard()">Add</button>
+  <button class="nav-btn admin-only" id="nav-add" onclick="openAddCard()">Add</button>
   <button class="nav-btn" id="nav-browse" onclick="showView('browse')">Browse</button>
   <button class="nav-btn" id="nav-stats" onclick="showView('stats')">Stats</button>
   <button class="nav-btn" id="nav-options" onclick="showView('options')" title="Shortcut: O">Options (⚙)</button>
-  <button class="nav-btn" id="nav-sync" onclick="syncFromApkg()">Sync Patch</button>
+  <button class="nav-btn admin-only" id="nav-sync" onclick="syncFromApkg()">Sync Patch</button>
+  <button class="nav-btn" id="nav-auth" onclick="openAuthModal()">☁️ Sign In</button>
   <span class="status-pill" id="save-status">Ready</span>
 </header>
+
+<!-- CLOUD ACCOUNT & SYNC MODAL -->
+<div class="modal-backdrop hidden" id="auth-modal" onclick="if(event.target===this)closeAuthModal()">
+  <div class="modal-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <h3>☁️ Cloud Sync Account</h3>
+      <button class="reset-icon-btn" onclick="closeAuthModal()">✕</button>
+    </div>
+
+    <div id="auth-logged-out-view">
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px 0;">
+        Studying works offline right now using device storage. Sign in anytime if you want to sync your progress across PC and iPhone.
+      </p>
+      <input type="email" id="auth-email" class="modal-input" placeholder="Email address" autocomplete="email">
+      <input type="password" id="auth-password" class="modal-input" placeholder="Password (6+ characters)" autocomplete="current-password">
+      <div id="auth-error-msg" style="color:var(--danger);font-size:12.5px;margin-bottom:10px;min-height:16px;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="show-ans-btn" style="flex:1;padding:9px;font-size:14px;" onclick="emailSignIn()">Sign In</button>
+        <button class="nav-btn" style="flex:1;padding:9px;font-size:14px;" onclick="emailSignUp()">Create Account</button>
+      </div>
+      <div class="modal-divider">— or —</div>
+      <button class="nav-btn" style="width:100%;padding:10px;display:flex;align-items:center;justify-content:center;gap:8px;" onclick="googleSignIn()">
+        <span>Continue with Google</span>
+      </button>
+    </div>
+
+    <div id="auth-logged-in-view" class="hidden">
+      <p style="font-size:13.5px;color:var(--text);margin:6px 0;">
+        Signed in as: <b id="auth-user-email" style="color:var(--due-green);"></b>
+      </p>
+      <p id="auth-role-badge" style="font-size:12px;color:var(--gold-light);margin:2px 0 8px 0;"></p>
+      <p id="auth-last-sync" style="font-size:12px;color:var(--muted);margin:0 0 16px 0;">
+        Cloud sync active — every review saves automatically.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button class="show-ans-btn" style="width:100%;padding:10px;font-size:14px;" onclick="forceCloudSyncNow()">🔄 Sync With Cloud Now</button>
+        <button class="btn-danger" style="width:100%;" onclick="signOutUser()">Sign Out</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <main class="container">
   <!-- 1. DECKS VIEW -->
@@ -395,7 +479,7 @@
     </div>
 
     <div class="study-footer">
-      <button class="btn-sm local-edit-only" onclick="editCurrentStudyCard()" title="Shortcut: E">Edit</button>
+      <button class="btn-sm admin-only" onclick="editCurrentStudyCard()" title="Shortcut: E">Edit</button>
       <button class="show-ans-btn" id="btn-show-answer" onclick="revealAnswer()">Show Answer</button>
       <div class="rating-group hidden" id="rating-buttons">
         <button class="rate-btn rate-again" onclick="rateCard(1)">
@@ -558,7 +642,7 @@
       <select id="browse-deck-filter" class="select-field" onchange="renderBrowseList()">
         <option value="ALL">All Decks</option>
       </select>
-      <button class="nav-btn local-edit-only" onclick="openAddCard()">+ New Card</button>
+      <button class="nav-btn admin-only" onclick="openAddCard()">+ New Card</button>
     </div>
 
     <div class="browse-layout">
@@ -567,13 +651,13 @@
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
           <h3 id="editor-heading" style="margin:0;color:var(--gold);">Card Preview</h3>
           <div style="display:flex;gap:8px;">
-            <button class="btn-sm local-edit-only hidden" id="btn-revert-apkg" onclick="revertCardToApkg()">Revert</button>
+            <button class="btn-sm admin-only hidden" id="btn-revert-apkg" onclick="revertCardToApkg()">Revert to Wiki</button>
             <button class="btn-sm" onclick="resetSelectedCardSRS()">Reset SRS</button>
-            <button class="btn-sm local-edit-only" style="color:var(--danger);border-color:var(--danger);" onclick="deleteSelectedCard()">Delete</button>
+            <button class="btn-sm admin-only" style="color:var(--danger);border-color:var(--danger);" onclick="deleteSelectedCard()">Delete</button>
           </div>
         </div>
 
-        <div class="local-edit-only">
+        <div class="admin-only">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
             <div>
               <label style="font-size:12px;color:var(--muted);">Card Title</label>
@@ -595,7 +679,7 @@
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
           <span id="edit-srs-info" style="font-size:12px;color:var(--muted);"></span>
-          <button class="show-ans-btn local-edit-only" style="margin:0;padding:8px 24px;" onclick="saveEditedCard()">Save Changes</button>
+          <button class="show-ans-btn admin-only" style="margin:0;padding:8px 24px;" onclick="saveEditedCard()">Save Official Card</button>
         </div>
 
         <div class="card" id="editor-preview" style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;"></div>
@@ -635,12 +719,25 @@
 </main>
 
 <script>
+// All state variables declared at the very top so non-signed-in mode never hits a ReferenceError
+const ADMIN_EMAILS = ["averyzane@gmail.com"];
+const FIREBASE_CONFIG = {
+  apiKey: "",
+  authDomain: "deadlock-flashcards.firebaseapp.com",
+  projectId: "deadlock-flashcards"
+};
 const IS_LOCAL_PC = (location.hostname === "localhost" || location.hostname === "127.0.0.1");
-if (!IS_LOCAL_PC) {
-  document.body.classList.add("hosted-readonly");
-}
+const MINUTE = 60 * 1000;
+const DAY = 24 * 60 * MINUTE;
+
+let FB_AUTH = null;
+let FB_DB = null;
+let CURRENT_USER = null;
+let CLOUD_SYNC_IN_FLIGHT = false;
 
 let CARDS = [];
+let RAW_BASE_CARDS = [];
+let GLOBAL_CARD_EDITS = { __CUSTOM_CARDS__: [], __DELETED_IDS__: [] };
 let SRS = {};
 let DECK_OPTIONS = {
   newGatherOrder: "random_notes",
@@ -667,8 +764,26 @@ let UNDO_STACK = [];
 let SELECTED_BROWSE_ID = null;
 let CRAM_MODE = false;
 
-const MINUTE = 60 * 1000;
-const DAY = 24 * 60 * MINUTE;
+function isAdminUser() {
+  if (IS_LOCAL_PC) return true;
+  if (!CURRENT_USER || !CURRENT_USER.email) return false;
+  const email = CURRENT_USER.email.toLowerCase().trim();
+  return ADMIN_EMAILS.map(e => e.toLowerCase().trim()).includes(email);
+}
+
+function updateAdminModeUI() {
+  document.body.classList.toggle("is-admin", isAdminUser());
+  if (SELECTED_BROWSE_ID) {
+    const card = CARDS.find(c => c.id === SELECTED_BROWSE_ID);
+    if (card) {
+      document.getElementById("editor-heading").textContent = isAdminUser()
+        ? (`Edit [${card.id}]` + (card.isModified ? " ✏️" : ""))
+        : card.title;
+      const revertBtn = document.getElementById("btn-revert-apkg");
+      if (revertBtn) revertBtn.classList.toggle("hidden", !(isAdminUser() && card.isModified));
+    }
+  }
+}
 
 function defaultSRS() {
   return { state: "new", step: 0, interval: 0, ease: 2.5, reps: 0, lapses: 0, due: 0, suspended: false };
@@ -701,11 +816,320 @@ function getCardTypeNum(card) {
   return map[prefix] || 5;
 }
 
+/* =========================================================
+   GLOBAL OFFICIAL CARD EDITS (WITH SMART PER-SIDE WIKI DIFF)
+   ========================================================= */
+function applyGlobalEditsToDeck() {
+  const deletedSet = new Set(GLOBAL_CARD_EDITS.__DELETED_IDS__ || []);
+  CARDS = RAW_BASE_CARDS.filter(c => !deletedSet.has(c.id)).map((c, idx) => {
+    const wikiFront = c.apkgFront || c.front;
+    const wikiBack = c.apkgBack || c.back;
+    const edit = GLOBAL_CARD_EDITS[c.id];
+    let finalTitle = c.title;
+    let finalDeck = c.deck;
+    let finalFront = c.front;
+    let finalBack = c.back;
+    let isMod = !!c.isModified;
+
+    if (edit) {
+      finalTitle = edit.title || finalTitle;
+      finalDeck = edit.deck || finalDeck;
+      let frontStillEdited = false;
+      let backStillEdited = false;
+
+      // Only apply edited Front if the wiki's Front hasn't changed since the edit was made
+      if (edit.frontEdited && (!edit.baseWikiFront || edit.baseWikiFront === wikiFront)) {
+        finalFront = edit.front;
+        frontStillEdited = true;
+      } else if (edit.frontEdited && edit.baseWikiFront && edit.baseWikiFront !== wikiFront) {
+        finalFront = wikiFront;
+      }
+
+      // Only apply edited Back if the wiki's Back hasn't changed since the edit was made
+      if (edit.backEdited && (!edit.baseWikiBack || edit.baseWikiBack === wikiBack)) {
+        finalBack = edit.back;
+        backStillEdited = true;
+      } else if (edit.backEdited && edit.baseWikiBack && edit.baseWikiBack !== wikiBack) {
+        finalBack = wikiBack;
+      }
+
+      isMod = frontStillEdited || backStillEdited;
+    }
+
+    return {
+      ...c,
+      title: finalTitle,
+      deck: finalDeck,
+      front: finalFront,
+      back: finalBack,
+      apkgFront: wikiFront,
+      apkgBack: wikiBack,
+      isModified: isMod,
+      pos: c.pos || (idx + 1),
+      noteKey: getCardNoteKey(c),
+      cardType: getCardTypeNum(c)
+    };
+  });
+
+  if (Array.isArray(GLOBAL_CARD_EDITS.__CUSTOM_CARDS__) && GLOBAL_CARD_EDITS.__CUSTOM_CARDS__.length > 0) {
+    const existingIds = new Set(CARDS.map(c => c.id));
+    for (const customCard of GLOBAL_CARD_EDITS.__CUSTOM_CARDS__) {
+      if (!existingIds.has(customCard.id) && !deletedSet.has(customCard.id)) {
+        CARDS.unshift(customCard);
+      }
+    }
+  }
+}
+
+async function fetchGlobalCardEditsFromFirestore() {
+  if (!FB_DB) return;
+  try {
+    const snap = await FB_DB.collection("global").doc("card_edits").get();
+    if (snap.exists) {
+      const data = snap.data() || {};
+      if (data.payload) {
+        GLOBAL_CARD_EDITS = JSON.parse(data.payload);
+        localStorage.setItem("deadlock_anki_card_edits", data.payload);
+        applyGlobalEditsToDeck();
+        populateDeckFilters();
+        renderDecksTable();
+      }
+    }
+  } catch (e) {
+    console.warn("Could not fetch global card edits:", e);
+  }
+}
+
+/* =========================================================
+   FIREBASE AUTH & CLOUD FIRESTORE SMART SYNC
+   ========================================================= */
+async function initFirebaseCloudSync() {
+  if (typeof firebase === "undefined") return;
+  try {
+    let cfg = FIREBASE_CONFIG;
+    if (!cfg.apiKey) {
+      const res = await fetch("/__/firebase/init.json");
+      if (res.ok) cfg = await res.json();
+    }
+    if (!cfg || !cfg.apiKey) return;
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(cfg);
+    }
+    FB_AUTH = firebase.auth();
+    FB_DB = firebase.firestore();
+
+    // Pull official admin card edits for ALL visitors (even when signed out)
+    await fetchGlobalCardEditsFromFirestore();
+
+    FB_AUTH.onAuthStateChanged(async (user) => {
+      CURRENT_USER = user;
+      updateAdminModeUI();
+      updateAuthUI();
+      renderDecksTable();
+      if (user) {
+        await pullAndMergeFromCloud();
+      }
+    });
+  } catch (e) {
+    console.warn("Firebase init skipped (offline or local mode):", e);
+  }
+}
+
+function mergeCardSRSRecords(localSrsMap, cloudSrsMap) {
+  const merged = { ...localSrsMap };
+  for (const [cid, cRec] of Object.entries(cloudSrsMap || {})) {
+    const lRec = merged[cid];
+    if (!lRec || lRec.state === "new") {
+      merged[cid] = cRec;
+      continue;
+    }
+    if (cRec.state === "new") continue;
+    const lScore = (lRec.reps || 0) + (lRec.lapses || 0);
+    const cScore = (cRec.reps || 0) + (cRec.lapses || 0);
+    if (cScore > lScore || (cScore === lScore && (cRec.due || 0) > (lRec.due || 0))) {
+      merged[cid] = cRec;
+    }
+  }
+  return merged;
+}
+
+function mergeDailyStats(localDaily, cloudDaily) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (!cloudDaily || cloudDaily.date !== today) return localDaily;
+  if (localDaily.date !== today) return cloudDaily;
+  const newStudied = { ...localDaily.newStudied };
+  for (const [k, v] of Object.entries(cloudDaily.newStudied || {})) {
+    newStudied[k] = Math.max(newStudied[k] || 0, v || 0);
+  }
+  const reviewsDone = { ...localDaily.reviewsDone };
+  for (const [k, v] of Object.entries(cloudDaily.reviewsDone || {})) {
+    reviewsDone[k] = Math.max(reviewsDone[k] || 0, v || 0);
+  }
+  return { date: today, newStudied, reviewsDone };
+}
+
+async function pullAndMergeFromCloud() {
+  if (!CURRENT_USER || !FB_DB || CLOUD_SYNC_IN_FLIGHT) return;
+  CLOUD_SYNC_IN_FLIGHT = true;
+  try {
+    const docRef = FB_DB.collection("users").doc(CURRENT_USER.uid);
+    const snap = await docRef.get();
+    if (snap.exists) {
+      const data = snap.data() || {};
+      if (data.srs) {
+        SRS = mergeCardSRSRecords(SRS, data.srs);
+        localStorage.setItem("deadlock_anki_srs", JSON.stringify(SRS));
+      }
+      if (data.dailyStats) {
+        DAILY_STATS = mergeDailyStats(DAILY_STATS, data.dailyStats);
+        localStorage.setItem("deadlock_anki_daily_stats", JSON.stringify(DAILY_STATS));
+      }
+      if (data.options) {
+        DECK_OPTIONS = { ...DECK_OPTIONS, ...data.options };
+        localStorage.setItem("deadlock_anki_options", JSON.stringify(DECK_OPTIONS));
+        syncOptionsFormUI();
+      }
+    }
+    await docRef.set({
+      srs: SRS,
+      dailyStats: DAILY_STATS,
+      options: DECK_OPTIONS,
+      updatedAt: Date.now()
+    }, { merge: true });
+
+    renderDecksTable();
+    setStatus("Cloud synced");
+    const syncText = document.getElementById("auth-last-sync");
+    if (syncText) syncText.textContent = "Last synced: " + new Date().toLocaleTimeString();
+  } catch (e) {
+    console.warn("Cloud pull/merge warning:", e);
+  } finally {
+    CLOUD_SYNC_IN_FLIGHT = false;
+  }
+}
+
+async function pushToCloud() {
+  if (!CURRENT_USER || !FB_DB) return;
+  try {
+    await FB_DB.collection("users").doc(CURRENT_USER.uid).set({
+      srs: SRS,
+      dailyStats: DAILY_STATS,
+      options: DECK_OPTIONS,
+      updatedAt: Date.now()
+    }, { merge: true });
+    setStatus("Cloud saved");
+  } catch (e) {
+    console.warn("Cloud push warning:", e);
+  }
+}
+
+function updateAuthUI() {
+  const btn = document.getElementById("nav-auth");
+  const outView = document.getElementById("auth-logged-out-view");
+  const inView = document.getElementById("auth-logged-in-view");
+  const emailEl = document.getElementById("auth-user-email");
+  const roleEl = document.getElementById("auth-role-badge");
+
+  if (CURRENT_USER) {
+    const shortEmail = (CURRENT_USER.email || "User").split("@")[0];
+    const adminTag = isAdminUser() ? " ★" : "";
+    btn.textContent = `🟢 ${shortEmail}${adminTag}`;
+    btn.classList.add("auth-btn-logged-in");
+    outView.classList.add("hidden");
+    inView.classList.remove("hidden");
+    emailEl.textContent = CURRENT_USER.email || CURRENT_USER.uid;
+    if (roleEl) {
+      roleEl.textContent = isAdminUser() ? "★ Admin Mode Unlocked (Global Card Editor Enabled)" : "Standard Study Account";
+    }
+  } else {
+    btn.textContent = "☁️ Sign In";
+    btn.classList.remove("auth-btn-logged-in");
+    outView.classList.remove("hidden");
+    inView.classList.add("hidden");
+  }
+}
+
+function openAuthModal() {
+  document.getElementById("auth-error-msg").textContent = "";
+  document.getElementById("auth-modal").classList.remove("hidden");
+}
+
+function closeAuthModal() {
+  document.getElementById("auth-modal").classList.add("hidden");
+}
+
+async function emailSignIn() {
+  if (!FB_AUTH) {
+    document.getElementById("auth-error-msg").textContent = "Firebase Auth not initialized yet.";
+    return;
+  }
+  const email = document.getElementById("auth-email").value.trim();
+  const pass = document.getElementById("auth-password").value;
+  try {
+    await FB_AUTH.signInWithEmailAndPassword(email, pass);
+    closeAuthModal();
+  } catch (e) {
+    document.getElementById("auth-error-msg").textContent = e.message;
+  }
+}
+
+async function emailSignUp() {
+  if (!FB_AUTH) {
+    document.getElementById("auth-error-msg").textContent = "Firebase Auth not initialized yet.";
+    return;
+  }
+  const email = document.getElementById("auth-email").value.trim();
+  const pass = document.getElementById("auth-password").value;
+  try {
+    await FB_AUTH.createUserWithEmailAndPassword(email, pass);
+    closeAuthModal();
+  } catch (e) {
+    document.getElementById("auth-error-msg").textContent = e.message;
+  }
+}
+
+async function googleSignIn() {
+  if (!FB_AUTH) {
+    document.getElementById("auth-error-msg").textContent = "Firebase Auth not initialized yet.";
+    return;
+  }
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await FB_AUTH.signInWithPopup(provider);
+    closeAuthModal();
+  } catch (e) {
+    document.getElementById("auth-error-msg").textContent = e.message;
+  }
+}
+
+async function forceCloudSyncNow() {
+  await fetchGlobalCardEditsFromFirestore();
+  await pullAndMergeFromCloud();
+  alert("Synced your progress and latest cards with the cloud!");
+}
+
+async function signOutUser() {
+  if (!FB_AUTH) return;
+  await FB_AUTH.signOut();
+  closeAuthModal();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    if (FB_DB) fetchGlobalCardEditsFromFirestore();
+    if (CURRENT_USER) pullAndMergeFromCloud();
+  }
+});
+
 async function initApp() {
+  updateAdminModeUI();
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
+  // 1. Load daily stats from localStorage immediately (works signed-out & offline)
   const savedDaily = localStorage.getItem("deadlock_anki_daily_stats");
   if (savedDaily) {
     try {
@@ -717,6 +1141,7 @@ async function initApp() {
     } catch(e) {}
   }
 
+  // 2. Load Deck Options from localStorage immediately
   const localOpt = localStorage.getItem("deadlock_anki_options");
   if (localOpt) {
     try { DECK_OPTIONS = { ...DECK_OPTIONS, ...JSON.parse(localOpt) }; } catch(err) {}
@@ -732,25 +1157,20 @@ async function initApp() {
     } catch (e) {}
   }
 
+  // 3. Load cached global card edits from localStorage
+  const localEditsRaw = localStorage.getItem("deadlock_anki_card_edits");
+  if (localEditsRaw) {
+    try { GLOBAL_CARD_EDITS = JSON.parse(localEditsRaw); } catch (e) {}
+  }
+
+  // 4. Load deadlock_cards.json and render decks immediately
   const resCards = await fetch("./deadlock_cards.json");
   const dataCards = await resCards.json();
-  const localEditsRaw = localStorage.getItem("deadlock_anki_card_edits");
-  const localEdits = localEditsRaw ? JSON.parse(localEditsRaw) : {};
-
-  CARDS = (dataCards.cards || []).map((c, idx) => {
-    const merged = localEdits[c.id] ? { ...c, ...localEdits[c.id] } : c;
-    return {
-      ...merged,
-      pos: c.pos || (idx + 1),
-      noteKey: getCardNoteKey(merged),
-      cardType: getCardTypeNum(merged)
-    };
-  });
-  if (localEdits.__CUSTOM_CARDS__) {
-    CARDS.unshift(...localEdits.__CUSTOM_CARDS__);
-  }
+  RAW_BASE_CARDS = dataCards.cards || [];
+  applyGlobalEditsToDeck();
   document.getElementById("apkg-model-css").textContent = dataCards.css || "";
 
+  // 5. Load SRS progress from localStorage immediately
   const localSrs = localStorage.getItem("deadlock_anki_srs");
   if (localSrs) {
     try { SRS = JSON.parse(localSrs); } catch(e) {}
@@ -771,6 +1191,9 @@ async function initApp() {
   syncOptionsFormUI();
   populateDeckFilters();
   renderDecksTable();
+
+  // 6. Connect to Firebase in the background (optional for non-signed-in users)
+  initFirebaseCloudSync();
 }
 
 async function preloadAllImagesOffline() {
@@ -799,7 +1222,7 @@ async function preloadAllImagesOffline() {
 
   btn.disabled = true;
   const keys = await caches.keys();
-  const cacheName = keys.find(k => k.startsWith("deadlog-") || k.startsWith("deadlock-")) || "deadlog-pwa-v1";
+  const cacheName = keys.find(k => k.startsWith("deadlog-") || k.startsWith("deadlock-")) || "deadlog-pwa-v3";
   const cache = await caches.open(cacheName);
 
   let done = 0;
@@ -915,6 +1338,7 @@ async function saveDeckOptions() {
 
   syncOptionsFormUI();
   setStatus("Options saved");
+  pushToCloud();
   showView("decks");
 }
 
@@ -931,27 +1355,39 @@ async function persistSRS() {
     } catch (e) {}
   }
   setStatus("Saved");
+  pushToCloud();
 }
 
 async function persistCards() {
-  if (!IS_LOCAL_PC) return;
-  const edits = { __CUSTOM_CARDS__: [] };
-  for (const c of CARDS) {
-    if (c.isCustom) edits.__CUSTOM_CARDS__.push(c);
-    else if (c.isModified) edits[c.id] = { title: c.title, deck: c.deck, front: c.front, back: c.back, isModified: true };
+  if (!isAdminUser()) return;
+  const payloadStr = JSON.stringify(GLOBAL_CARD_EDITS);
+  localStorage.setItem("deadlock_anki_card_edits", payloadStr);
+
+  if (FB_DB && CURRENT_USER) {
+    try {
+      await FB_DB.collection("global").doc("card_edits").set({
+        payload: payloadStr,
+        updatedAt: Date.now(),
+        updatedBy: CURRENT_USER.email || "admin"
+      });
+    } catch (e) {
+      console.warn("Could not push global card edit to Firestore:", e);
+    }
   }
-  localStorage.setItem("deadlock_anki_card_edits", JSON.stringify(edits));
-  try {
-    await fetch("/api/cards", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        css: document.getElementById("apkg-model-css").textContent,
-        cards: CARDS
-      })
-    });
-  } catch (e) {}
-  setStatus("Card saved");
+
+  if (IS_LOCAL_PC) {
+    try {
+      await fetch("/api/cards", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          css: document.getElementById("apkg-model-css").textContent,
+          cards: CARDS
+        })
+      });
+    } catch (e) {}
+  }
+  setStatus("Official card updated");
 }
 
 function setStatus(msg) {
@@ -1419,6 +1855,9 @@ async function resetAllProgressFromScratch() {
   LAST_RATED_ID = null;
   localStorage.removeItem("deadlock_anki_srs");
   localStorage.removeItem("deadlock_anki_daily_stats");
+  if (CURRENT_USER && FB_DB) {
+    await FB_DB.collection("users").doc(CURRENT_USER.uid).set({ srs: {}, dailyStats: DAILY_STATS, updatedAt: Date.now() }, { merge: true });
+  }
   await persistSRS();
   renderStatsView();
   renderDecksTable();
@@ -1437,6 +1876,9 @@ async function resetSingleDeckProgress() {
   }
   DAILY_STATS.newStudied[targetDeck] = 0;
   DAILY_STATS.reviewsDone[targetDeck] = 0;
+  if (CURRENT_USER && FB_DB) {
+    await FB_DB.collection("users").doc(CURRENT_USER.uid).set({ srs: SRS, dailyStats: DAILY_STATS, updatedAt: Date.now() }, { merge: true });
+  }
   await persistSRS();
   renderStatsView();
   renderDecksTable();
@@ -1459,7 +1901,7 @@ function renderBrowseList() {
     const badgeColor = s.state === "new" ? "var(--new-blue)" : (s.state === "review" ? "var(--due-green)" : "var(--learn-orange)");
     const selCls = c.id === SELECTED_BROWSE_ID ? "card-list-item selected" : "card-list-item";
     const safeId = c.id.replace(/'/g, "\\'");
-    const modBadge = (IS_LOCAL_PC && c.isModified) ? ` ✏️` : "";
+    const modBadge = (isAdminUser() && c.isModified) ? ` ✏️` : "";
     return `
       <div class="${selCls}" onclick="selectBrowseCard('${safeId}')">
         <div>
@@ -1480,7 +1922,7 @@ function selectBrowseCard(cardId) {
   SELECTED_BROWSE_ID = cardId;
   const card = CARDS.find(c => c.id === cardId);
   if (!card) return;
-  document.getElementById("editor-heading").textContent = IS_LOCAL_PC
+  document.getElementById("editor-heading").textContent = isAdminUser()
     ? (`Edit [${card.id}]` + (card.isModified ? " ✏️" : ""))
     : card.title;
   document.getElementById("edit-title").value = card.title;
@@ -1489,7 +1931,7 @@ function selectBrowseCard(cardId) {
   document.getElementById("edit-back").value = card.back;
 
   const revertBtn = document.getElementById("btn-revert-apkg");
-  if (revertBtn) revertBtn.classList.toggle("hidden", !(IS_LOCAL_PC && card.isModified && card.apkgBack));
+  if (revertBtn) revertBtn.classList.toggle("hidden", !(isAdminUser() && card.isModified));
 
   const s = getCardSRS(card.id);
   document.getElementById("edit-srs-info").textContent =
@@ -1505,66 +1947,103 @@ function updateEditorPreview() {
 }
 
 function openAddCard() {
-  if (!IS_LOCAL_PC) return;
+  if (!isAdminUser()) return;
   showView("browse");
   SELECTED_BROWSE_ID = "__NEW__";
-  document.getElementById("editor-heading").textContent = "Add New Card";
+  document.getElementById("editor-heading").textContent = "Add New Official Card";
   document.getElementById("edit-title").value = "";
   document.getElementById("edit-deck").value = "Deadlock S2::1. Item Stats & Details";
   document.getElementById("edit-front").value = "<h2>New Item / Prompt</h2>";
   document.getElementById("edit-back").value = "<div class='wiki-details'><p>Details here...</p></div>";
-  document.getElementById("edit-srs-info").textContent = "New Custom Card";
+  document.getElementById("edit-srs-info").textContent = "New Official Card";
   updateEditorPreview();
 }
 
 function editCurrentStudyCard() {
-  if (!IS_LOCAL_PC || !CURRENT_CARD) return;
+  if (!isAdminUser() || !CURRENT_CARD) return;
   showView("browse");
   selectBrowseCard(CURRENT_CARD.id);
 }
 
 async function saveEditedCard() {
-  if (!IS_LOCAL_PC) return;
+  if (!isAdminUser()) return;
   const title = document.getElementById("edit-title").value.trim() || "Untitled";
   const deck = document.getElementById("edit-deck").value.trim() || "Deadlock S2::Custom";
   const front = document.getElementById("edit-front").value;
   const back = document.getElementById("edit-back").value;
+
+  if (!GLOBAL_CARD_EDITS.__CUSTOM_CARDS__) GLOBAL_CARD_EDITS.__CUSTOM_CARDS__ = [];
+  if (!GLOBAL_CARD_EDITS.__DELETED_IDS__) GLOBAL_CARD_EDITS.__DELETED_IDS__ = [];
 
   if (SELECTED_BROWSE_ID === "__NEW__") {
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
     const newId = `custom::${slug}_${Date.now().toString().slice(-4)}`;
     const newCard = {
       id: newId, title, noteKey: slug, cardType: 5, pos: CARDS.length + 1,
-      deck, front, back, tags: "custom", isCustom: true, isModified: true
+      deck, front, back, apkgFront: front, apkgBack: back,
+      tags: "custom", isCustom: true, isModified: true
     };
-    CARDS.unshift(newCard);
+    GLOBAL_CARD_EDITS.__CUSTOM_CARDS__.unshift(newCard);
     SELECTED_BROWSE_ID = newId;
   } else {
     const card = CARDS.find(c => c.id === SELECTED_BROWSE_ID);
-    if (card) { card.title = title; card.deck = deck; card.front = front; card.back = back; card.isModified = true; }
+    if (card) {
+      const baseWikiFront = card.apkgFront || card.front;
+      const baseWikiBack = card.apkgBack || card.back;
+      if (card.isCustom) {
+        const idx = GLOBAL_CARD_EDITS.__CUSTOM_CARDS__.findIndex(x => x.id === card.id);
+        if (idx >= 0) {
+          GLOBAL_CARD_EDITS.__CUSTOM_CARDS__[idx] = { ...card, title, deck, front, back };
+        }
+      } else {
+        GLOBAL_CARD_EDITS[card.id] = {
+          title,
+          deck,
+          front,
+          back,
+          frontEdited: front !== baseWikiFront,
+          backEdited: back !== baseWikiBack,
+          baseWikiFront,
+          baseWikiBack,
+          isModified: (front !== baseWikiFront) || (back !== baseWikiBack)
+        };
+      }
+    }
   }
+
+  applyGlobalEditsToDeck();
   populateDeckFilters();
   selectBrowseCard(SELECTED_BROWSE_ID);
+  if (CURRENT_CARD && CURRENT_CARD.id === SELECTED_BROWSE_ID) {
+    const updated = CARDS.find(c => c.id === SELECTED_BROWSE_ID);
+    if (updated) CURRENT_CARD = updated;
+  }
   await persistCards();
 }
 
 async function revertCardToApkg() {
-  if (!IS_LOCAL_PC || !SELECTED_BROWSE_ID || SELECTED_BROWSE_ID === "__NEW__") return;
+  if (!isAdminUser() || !SELECTED_BROWSE_ID || SELECTED_BROWSE_ID === "__NEW__") return;
   const card = CARDS.find(c => c.id === SELECTED_BROWSE_ID);
-  if (!card || !card.apkgBack) return;
-  if (!confirm(`Revert "${card.title}" to default?`)) return;
-  card.front = card.apkgFront || card.front;
-  card.back = card.apkgBack;
-  card.isModified = false;
+  if (!card) return;
+  if (!confirm(`Revert "${card.title}" back to the official deadlock.wiki version?`)) return;
+  delete GLOBAL_CARD_EDITS[card.id];
+  applyGlobalEditsToDeck();
   selectBrowseCard(card.id);
   await persistCards();
 }
 
 async function deleteSelectedCard() {
-  if (!IS_LOCAL_PC || !SELECTED_BROWSE_ID || SELECTED_BROWSE_ID === "__NEW__") return;
-  if (!confirm(`Delete card "${SELECTED_BROWSE_ID}"?`)) return;
-  CARDS = CARDS.filter(c => c.id !== SELECTED_BROWSE_ID);
+  if (!isAdminUser() || !SELECTED_BROWSE_ID || SELECTED_BROWSE_ID === "__NEW__") return;
+  if (!confirm(`Delete card "${SELECTED_BROWSE_ID}" for all users?`)) return;
+  if (!GLOBAL_CARD_EDITS.__DELETED_IDS__) GLOBAL_CARD_EDITS.__DELETED_IDS__ = [];
+  GLOBAL_CARD_EDITS.__DELETED_IDS__.push(SELECTED_BROWSE_ID);
+  if (GLOBAL_CARD_EDITS.__CUSTOM_CARDS__) {
+    GLOBAL_CARD_EDITS.__CUSTOM_CARDS__ = GLOBAL_CARD_EDITS.__CUSTOM_CARDS__.filter(c => c.id !== SELECTED_BROWSE_ID);
+  }
+  delete GLOBAL_CARD_EDITS[SELECTED_BROWSE_ID];
   SELECTED_BROWSE_ID = null;
+  applyGlobalEditsToDeck();
+  populateDeckFilters();
   renderBrowseList();
   await persistCards();
 }
@@ -1594,6 +2073,7 @@ function renderStatsView() {
 }
 
 async function syncFromApkg() {
+  if (!isAdminUser()) return;
   setStatus("Syncing...");
   try {
     let data = null;
@@ -1616,21 +2096,13 @@ async function syncFromApkg() {
       }
     }
 
-    const localEditsRaw = localStorage.getItem("deadlock_anki_card_edits");
-    const localEdits = localEditsRaw ? JSON.parse(localEditsRaw) : {};
-    CARDS = (data.cards || []).map((c, idx) => {
-      const merged = localEdits[c.id] ? { ...c, ...localEdits[c.id] } : c;
-      return {
-        ...merged,
-        pos: c.pos || (idx + 1),
-        noteKey: getCardNoteKey(merged),
-        cardType: getCardTypeNum(merged)
-      };
-    });
-    if (localEdits.__CUSTOM_CARDS__) CARDS.unshift(...localEdits.__CUSTOM_CARDS__);
+    RAW_BASE_CARDS = data.cards || [];
+    await fetchGlobalCardEditsFromFirestore();
+    applyGlobalEditsToDeck();
     document.getElementById("apkg-model-css").textContent = data.css || "";
     populateDeckFilters();
     renderDecksTable();
+    if (CURRENT_USER) await pullAndMergeFromCloud();
     setStatus(`Synced ${CARDS.length} cards`);
     alert(`Synced ${CARDS.length} cards! Your study progress was preserved.`);
   } catch (e) {
@@ -1686,7 +2158,7 @@ window.addEventListener("keydown", (e) => {
   else if (ANSWER_SHOWN && ["Digit2", "Numpad2"].includes(e.code)) rateCard(2);
   else if (ANSWER_SHOWN && ["Digit3", "Numpad3"].includes(e.code)) rateCard(3);
   else if (ANSWER_SHOWN && ["Digit4", "Numpad4"].includes(e.code)) rateCard(4);
-  else if (IS_LOCAL_PC && (e.key === "e" || e.key === "E")) { e.preventDefault(); editCurrentStudyCard(); }
+  else if (isAdminUser() && (e.key === "e" || e.key === "E")) { e.preventDefault(); editCurrentStudyCard(); }
   else if (e.key === "z" || e.key === "Z") { e.preventDefault(); undoLastReview(); }
 });
 
