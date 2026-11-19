@@ -1,4 +1,4 @@
-const CACHE_NAME = 'deadlock-anki-gh-v20261118_211542';
+const CACHE_NAME = 'deadlock-anki-gh-v20261119_000109';
 const CORE_ASSETS = [
   './',
   './index.html',
